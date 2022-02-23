@@ -60,7 +60,7 @@ impl<I> Sequencer<I> {
     /// Inserts a new node with no parents and immediately
     /// queues it for processing.
     /// Returns the nodes key.
-    pub fn insert_node(&mut self, item: I) -> SeqKey {
+    pub fn new_node(&mut self, item: I) -> SeqKey {
         let key = self.create_node(item);
         self.roots.push(key);
         self.queued_nodes.push(key);
@@ -70,14 +70,14 @@ impl<I> Sequencer<I> {
     /// Inserts a vector of items to be executed linearly, one of the other.
     /// The first item is immediately queued for processing.
     /// Returns the key of the last node in the sequence.
-    pub fn insert_seq(&mut self, mut items: Vec<I>) -> SeqKey {
+    pub fn new_seq(&mut self, mut items: Vec<I>) -> SeqKey {
         // Make the root element be last so we can pop it
         // TODO there's probably an O(1) way to do this
         items.rotate_left(1);
 
         // Create the root node
         let root_item = items.pop().unwrap();
-        let mut prev_key = self.insert_node(root_item);
+        let mut prev_key = self.new_node(root_item);
 
         // Create the rest of the sequence
         items.drain(..).for_each(|item| {
@@ -165,9 +165,9 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_root_node() {
+    fn test_new_node() {
         let mut sequencer = Sequencer::default();
-        let key = sequencer.insert_node(SeqItem::Walk);
+        let key = sequencer.new_node(SeqItem::Walk);
         assert_eq!(1, sequencer.nodes.len());
         assert_eq!(1, sequencer.roots.len());
         assert_eq!(key, sequencer.roots[0]);
@@ -178,9 +178,9 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_root_seq() {
+    fn test_new_seq() {
         let mut sequencer = Sequencer::default();
-        sequencer.insert_seq(vec![SeqItem::Walk, SeqItem::Wait, SeqItem::Say]);
+        sequencer.new_seq(vec![SeqItem::Walk, SeqItem::Wait, SeqItem::Say]);
         assert_eq!(3, sequencer.nodes.len());
         assert_eq!(1, sequencer.queued_nodes.len());
         let queued_node = &sequencer.nodes[sequencer.queued_nodes[0]];
@@ -190,8 +190,8 @@ mod tests {
     #[test]
     fn test_drain_queue() {
         let mut sequencer = Sequencer::default();
-        let key1 = sequencer.insert_node(SeqItem::Walk);
-        let key2 = sequencer.insert_node(SeqItem::Wait);
+        let key1 = sequencer.new_node(SeqItem::Walk);
+        let key2 = sequencer.new_node(SeqItem::Wait);
         assert_eq!(2, sequencer.queued_nodes.len());
         let keys = vec![key1, key2];
         let mut i = 0;
@@ -210,7 +210,7 @@ mod tests {
     fn test_node_finished_singular() {
         // Test case: One node exists, it's marked as finished, nothing new is queued
         let mut sequencer = Sequencer::default();
-        let key = sequencer.insert_node(SeqItem::Walk);
+        let key = sequencer.new_node(SeqItem::Walk);
         sequencer.drain_queue(|_key, _item| {});
         sequencer.node_finished(key);
         assert_eq!(0, sequencer.queued_nodes.len());
@@ -221,7 +221,7 @@ mod tests {
     fn test_node_finished_seq() {
         // Test case: A seq of nodes exists. Finishing a node queues up the next.
         let mut sequencer = Sequencer::default();
-        let mut key = sequencer.insert_seq(vec![SeqItem::Walk, SeqItem::Wait, SeqItem::Say]);
+        let mut key = sequencer.new_seq(vec![SeqItem::Walk, SeqItem::Wait, SeqItem::Say]);
 
         sequencer.drain_queue(|drain_key, item| {
             key = drain_key;
@@ -244,11 +244,14 @@ mod tests {
     #[test]
     fn test_iter_active() {
         let mut sequencer = Sequencer::default();
-        let key = sequencer.insert_node(SeqItem::Walk);
-        let key2 = sequencer.insert_node(SeqItem::Wait);
+        let key = sequencer.new_node(SeqItem::Walk);
+        let key2 = sequencer.new_node(SeqItem::Wait);
         sequencer.drain_queue(|_key, _item| {});
         let expected_active: HashSet<SeqKey> = vec![key, key2].into_iter().collect();
         let actual_active: HashSet<SeqKey> = sequencer.iter_active().map(|node| node.key).collect();
-        assert_eq!(expected_active, actual_active)
+        assert_eq!(expected_active, actual_active);
+        sequencer.node_finished(key);
+        sequencer.node_finished(key2);
+        assert_eq!(0, sequencer.iter_active().count())
     }
 }

@@ -1,15 +1,17 @@
 ## What
 
-A way to specify a dependency graph. Created for sequencing game events though I guess could be used for other stuff.
+A way to specify a sequence of events that might depend on other events - basically a dependency graph. Created for sequencing game events though I guess could be used for other stuff.
 
 ## Examples
 
 ### Linear sequence: Taking a piece in chess
 
-If you want to animate a piece taking another piece then you need to have the sequence:
+If you want to animate a piece taking another piece in chess, then you might have a sequence like:
 1. P1 moves to position of P2
-2. delete P2
+2. Delete P2
 3. Switch turn to opponent
+
+Where each event is only triggered after the previous has ended.
 
 This library makes it easy to create such sequence:
 
@@ -33,7 +35,11 @@ fn handle_input(..., sequencer: &mut Sequencer<Events>) {
 
     // The player has selected a piece and location to move it to.
     // Now we insert the sequence.
-    sequencer.insert_seq(vec![MovePiece(from, to), RemovePiece(to), EndTurn]);
+    sequencer.insert_seq(vec![
+        MovePiece(from, to),
+        RemovePiece(to),
+        EndTurn,
+    ]);
 
     ...
 }
