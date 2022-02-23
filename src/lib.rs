@@ -1,4 +1,5 @@
-use log::error;
+use std::collections::HashSet;
+
 use slotmap::{new_key_type, SlotMap};
 
 new_key_type! {
@@ -6,29 +7,31 @@ new_key_type! {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SeqStatus {
-    NotRun,
-    Running,
-    Finished,
+pub enum NodeStatus {
+    Active,
+    Inactive,
+    Completed,
 }
 
 #[derive(Debug, Clone)]
 pub struct SeqNode<I> {
     pub key: SeqKey,
-    pub parents: Vec<SeqKey>,
-    pub children: Vec<SeqKey>,
-    pub status: SeqStatus,
+    parents: Vec<SeqKey>,
+    children: Vec<SeqKey>,
+    status: NodeStatus,
     pub item: I,
 }
 
 #[derive(Debug)]
 pub struct Sequencer<I> {
     /// All root nodes
-    pub roots: Vec<SeqKey>,
+    roots: Vec<SeqKey>,
     /// Storage of all nodes for the sequence graph
-    pub nodes: SlotMap<SeqKey, SeqNode<I>>,
+    nodes: SlotMap<SeqKey, SeqNode<I>>,
     /// List of all nodes ready for processing
-    pub queued_nodes: Vec<SeqKey>,
+    queued_nodes: Vec<SeqKey>,
+    /// List of all nodes that are currently running
+    active_nodes: HashSet<SeqKey>,
 }
 
 impl<T> Default for Sequencer<T> {
@@ -38,6 +41,7 @@ impl<T> Default for Sequencer<T> {
             roots: vec![],
             nodes,
             queued_nodes: vec![],
+            active_nodes: HashSet::new(),
         }
     }
 }
@@ -48,7 +52,7 @@ impl<I> Sequencer<I> {
             key,
             parents: vec![],
             children: vec![],
-            status: SeqStatus::NotRun,
+            status: NodeStatus::Inactive,
             item,
         })
     }
@@ -68,6 +72,7 @@ impl<I> Sequencer<I> {
     /// Returns the key of the last node in the sequence.
     pub fn insert_seq(&mut self, mut items: Vec<I>) -> SeqKey {
         // Make the root element be last so we can pop it
+        // TODO there's probably an O(1) way to do this
         items.rotate_left(1);
 
         // Create the root node
@@ -86,15 +91,15 @@ impl<I> Sequencer<I> {
         prev_key
     }
 
-    /// Queue all children of node with finished parents
+    /// Queue all children of node with completed parents
     fn queue_ready_children(&mut self, key: SeqKey) {
         let node = &self.nodes[key];
         'child: for ckey in node.children.iter().copied() {
             let cnode = &self.nodes[ckey];
-            // Check that all parents are Finished
+            // Check that all parents are completed
             for pkey in cnode.parents.iter().copied() {
                 let pnode = &self.nodes[pkey];
-                if pnode.status != SeqStatus::Finished {
+                if pnode.status != NodeStatus::Completed {
                     continue 'child;
                 }
             }
@@ -104,33 +109,51 @@ impl<I> Sequencer<I> {
     }
 
     /// Mark that a node is finished executing.
-    /// Queues any children which have all of their parents marked as finished.
+    /// Queues any children which have all of their parents marked as completed.
     pub fn node_finished(&mut self, key: SeqKey) {
-        if let Some(node) = self.nodes.get_mut(key) {
-            node.status = SeqStatus::Finished;
-            self.queue_ready_children(key);
-        } else {
-            error!("Tried to mark node as finished with key which doesn't exist");
+        self.set_node_status(key, NodeStatus::Completed);
+        self.queue_ready_children(key);
+    }
+
+    fn set_node_status(&mut self, key: SeqKey, new_status: NodeStatus) {
+        let node = &mut self.nodes[key];
+        match (node.status, new_status) {
+            (NodeStatus::Active, NodeStatus::Completed) => {
+                self.active_nodes.remove(&key);
+            }
+            (NodeStatus::Inactive, NodeStatus::Active) => {
+                self.active_nodes.insert(key);
+            }
+            _ => {}
         }
+        node.status = new_status;
     }
 
     /// Drains the queue of nodes to process, applying the provided function, and
-    /// marking all of them with the status of "Running".
+    /// marking all of them with the status of "Active".
     pub fn drain_queue<F>(&mut self, mut f: F)
     where
         F: FnMut(SeqKey, &I),
     {
-        self.queued_nodes.drain(..).for_each(|key| {
-            let node = &mut self.nodes[key];
-            node.status = SeqStatus::Running;
+        let mut queued_nodes = std::mem::take(&mut self.queued_nodes);
+        queued_nodes.drain(..).for_each(|key| {
+            self.set_node_status(key, NodeStatus::Active);
+            let node = &self.nodes[key];
             f(node.key, &node.item)
         });
+    }
+
+    /// Iterator for all nodes that are currently active.
+    pub fn iter_active(&self) -> impl Iterator<Item = &SeqNode<I>> {
+        self.active_nodes.iter().map(|key| &self.nodes[*key])
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::SeqStatus;
+    use std::collections::HashSet;
+
+    use crate::{NodeStatus, SeqKey};
 
     use super::Sequencer;
 
@@ -179,8 +202,8 @@ mod tests {
         assert_eq!(0, sequencer.queued_nodes.len());
         assert_eq!(2, i);
         // Check the nodes are set to Status: Running
-        assert_eq!(SeqStatus::Running, sequencer.nodes[key1].status);
-        assert_eq!(SeqStatus::Running, sequencer.nodes[key2].status);
+        assert_eq!(NodeStatus::Active, sequencer.nodes[key1].status);
+        assert_eq!(NodeStatus::Active, sequencer.nodes[key2].status);
     }
 
     #[test]
@@ -191,7 +214,7 @@ mod tests {
         sequencer.drain_queue(|_key, _item| {});
         sequencer.node_finished(key);
         assert_eq!(0, sequencer.queued_nodes.len());
-        assert_eq!(SeqStatus::Finished, sequencer.nodes[key].status);
+        assert_eq!(NodeStatus::Completed, sequencer.nodes[key].status);
     }
 
     #[test]
@@ -216,5 +239,16 @@ mod tests {
         });
         sequencer.node_finished(key);
         sequencer.drain_queue(|_, _| unreachable!());
+    }
+
+    #[test]
+    fn test_iter_active() {
+        let mut sequencer = Sequencer::default();
+        let key = sequencer.insert_node(SeqItem::Walk);
+        let key2 = sequencer.insert_node(SeqItem::Wait);
+        sequencer.drain_queue(|_key, _item| {});
+        let expected_active: HashSet<SeqKey> = vec![key, key2].into_iter().collect();
+        let actual_active: HashSet<SeqKey> = sequencer.iter_active().map(|node| node.key).collect();
+        assert_eq!(expected_active, actual_active)
     }
 }
