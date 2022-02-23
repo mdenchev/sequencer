@@ -95,7 +95,7 @@ impl<I> Sequencer<I> {
         prev_key
     }
 
-    /// Inserts a vector of items to be executed linearly, one of the other.
+    /// Inserts a vector of items to be executed linearly, one after the other.
     /// The first item is run once the parent is done.
     /// Returns the key of the last node in the sequence.
     pub fn new_child_seq(&mut self, parent: SeqKey, items: Vec<I>) -> SeqKey {
@@ -104,6 +104,23 @@ impl<I> Sequencer<I> {
             prev_key = self.create_node_with_parents(vec![prev_key], item);
         }
         prev_key
+    }
+
+    /// Inserts a vector of items to be executed linearly, one after the other.
+    /// The first item is run once the parent is done.
+    /// The parents children are transfered to the last node of the new sequence.
+    /// Returns the key of the last node in the sequence.
+    pub fn inject_child_seq(&mut self, parent: SeqKey, items: Vec<I>) -> SeqKey {
+        // Detach children from parent
+        let mut parent_children = std::mem::take(&mut self.nodes[parent].children);
+
+        // Inject the new sequence
+        let last_key = self.new_child_seq(parent, items);
+
+        // Insert the parent's ex-children to the last node in the new seq
+        self.nodes[last_key].children.append(&mut parent_children);
+
+        last_key
     }
 
     /// Queue all children of node with completed parents
@@ -211,6 +228,31 @@ mod tests {
         assert_eq!(1, sequencer.queued_nodes.len());
         let queued_node = &sequencer.nodes[sequencer.queued_nodes[0]];
         assert_eq!(SeqItem::Walk, queued_node.item);
+    }
+
+    #[test]
+    fn test_inject_seq() {
+        let mut sequencer = Sequencer::default();
+        let s1 = sequencer.new_seq(vec![SeqItem::Walk, SeqItem::Walk]);
+        sequencer.new_child_seq(s1, vec![SeqItem::Say, SeqItem::Say]);
+        sequencer.inject_child_seq(s1, vec![SeqItem::Wait, SeqItem::Wait]);
+        assert_eq!(6, sequencer.nodes.len());
+        assert_eq!(1, sequencer.queued_nodes.len());
+        let queued_node = &sequencer.nodes[sequencer.queued_nodes[0]];
+        assert_eq!(SeqItem::Walk, queued_node.item);
+        let mut key = s1;
+        sequencer.drain_queue(|drain_key, _| key = drain_key);
+        sequencer.node_finished(key);
+        sequencer.drain_queue(|drain_key, _| key = drain_key);
+        sequencer.node_finished(key);
+        let queued_node = &sequencer.nodes[sequencer.queued_nodes[0]];
+        assert_eq!(SeqItem::Wait, queued_node.item);
+        sequencer.drain_queue(|drain_key, _| key = drain_key);
+        sequencer.node_finished(key);
+        sequencer.drain_queue(|drain_key, _| key = drain_key);
+        sequencer.node_finished(key);
+        let queued_node = &sequencer.nodes[sequencer.queued_nodes[0]];
+        assert_eq!(SeqItem::Say, queued_node.item);
     }
 
     #[test]
