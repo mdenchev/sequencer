@@ -57,6 +57,15 @@ impl<I> Sequencer<I> {
         })
     }
 
+    fn create_node_with_parents(&mut self, parents: Vec<SeqKey>, item: I) -> SeqKey {
+        let key = self.create_node(item);
+        for pkey in parents.iter().copied() {
+            self.nodes[pkey].children.push(key);
+        }
+        self.nodes[key].parents = parents;
+        key
+    }
+
     /// Inserts a new node with no parents and immediately
     /// queues it for processing.
     /// Returns the nodes key.
@@ -67,7 +76,7 @@ impl<I> Sequencer<I> {
         key
     }
 
-    /// Inserts a vector of items to be executed linearly, one of the other.
+    /// Inserts items to be executed linearly, one after the other.
     /// The first item is immediately queued for processing.
     /// Returns the key of the last node in the sequence.
     pub fn new_seq(&mut self, mut items: Vec<I>) -> SeqKey {
@@ -80,14 +89,20 @@ impl<I> Sequencer<I> {
         let mut prev_key = self.new_node(root_item);
 
         // Create the rest of the sequence
-        items.drain(..).for_each(|item| {
-            let cur_key = self.create_node(item);
-            let node = &mut self.nodes[cur_key];
-            node.parents.push(prev_key);
-            let pnode = &mut self.nodes[prev_key];
-            pnode.children.push(cur_key);
-            prev_key = cur_key
-        });
+        for item in items {
+            prev_key = self.create_node_with_parents(vec![prev_key], item);
+        }
+        prev_key
+    }
+
+    /// Inserts a vector of items to be executed linearly, one of the other.
+    /// The first item is run once the parent is done.
+    /// Returns the key of the last node in the sequence.
+    pub fn new_child_seq(&mut self, parent: SeqKey, items: Vec<I>) -> SeqKey {
+        let mut prev_key = parent;
+        for item in items {
+            prev_key = self.create_node_with_parents(vec![prev_key], item);
+        }
         prev_key
     }
 
@@ -181,6 +196,17 @@ mod tests {
     fn test_new_seq() {
         let mut sequencer = Sequencer::default();
         sequencer.new_seq(vec![SeqItem::Walk, SeqItem::Wait, SeqItem::Say]);
+        assert_eq!(3, sequencer.nodes.len());
+        assert_eq!(1, sequencer.queued_nodes.len());
+        let queued_node = &sequencer.nodes[sequencer.queued_nodes[0]];
+        assert_eq!(SeqItem::Walk, queued_node.item);
+    }
+
+    #[test]
+    fn test_new_child_seq() {
+        let mut sequencer = Sequencer::default();
+        let parent = sequencer.new_node(SeqItem::Walk);
+        sequencer.new_child_seq(parent, vec![SeqItem::Say, SeqItem::Say]);
         assert_eq!(3, sequencer.nodes.len());
         assert_eq!(1, sequencer.queued_nodes.len());
         let queued_node = &sequencer.nodes[sequencer.queued_nodes[0]];
