@@ -165,13 +165,13 @@ impl<I> Sequencer<I> {
     /// marking all of them with the status of "Active".
     pub fn drain_queue<F>(&mut self, mut f: F)
     where
-        F: FnMut(SeqKey, &I),
+        F: FnMut(SeqKey, &mut I),
     {
         let mut queued_nodes = std::mem::take(&mut self.queued_nodes);
         queued_nodes.drain(..).for_each(|key| {
             self.set_node_status(key, NodeStatus::Active);
-            let node = &self.nodes[key];
-            f(node.key, &node.item)
+            let node = &mut self.nodes[key];
+            f(node.key, &mut node.item)
         });
     }
 
