@@ -222,9 +222,9 @@ impl<I> Sequencer<I> {
         self.active_nodes.iter().map(|key| &self.nodes[*key])
     }
 
-    /// Returns true if there are no active or queued nodes.
-    pub fn is_empty(&self) -> bool {
-        self.active_nodes.is_empty() && self.queued_nodes.is_empty()
+    /// Returns true if there are an active or queued node.
+    pub fn is_active(&self) -> bool {
+        !(self.active_nodes.is_empty() && self.queued_nodes.is_empty())
     }
 }
 
@@ -375,14 +375,14 @@ mod tests {
     }
 
     #[test]
-    fn test_is_empty() {
+    fn test_is_active() {
         let mut sequencer = Sequencer::default();
         let key = sequencer.new_node(SeqItem::Walk);
-        assert_eq!(false, sequencer.is_empty());
+        assert_eq!(true, sequencer.is_active());
         sequencer.drain_queue(|_, _| {});
-        assert_eq!(false, sequencer.is_empty());
+        assert_eq!(true, sequencer.is_active());
         sequencer.node_finished(key);
-        assert_eq!(true, sequencer.is_empty());
+        assert_eq!(false, sequencer.is_active());
     }
 
 }
