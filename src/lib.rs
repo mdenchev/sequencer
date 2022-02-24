@@ -3,9 +3,11 @@ use std::collections::HashSet;
 use slotmap::{new_key_type, SlotMap};
 
 new_key_type! {
+    /// Key for referencing each Node uniquely.
     pub struct SeqKey;
 }
 
+/// The status of a node.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeStatus {
     Active,
@@ -13,6 +15,9 @@ pub enum NodeStatus {
     Completed,
 }
 
+/// A node in a sequence graph. Each node represents an Item that needs to be processed
+/// and tracks it's current status. Upon completing an item it checks if children nodes
+/// are ready to be processed.
 #[derive(Debug, Clone)]
 pub struct SeqNode<I> {
     pub key: SeqKey,
@@ -22,6 +27,8 @@ pub struct SeqNode<I> {
     pub item: I,
 }
 
+/// Structure to hold various sequences and track what is being processed
+/// and what needs to be processed.
 #[derive(Debug)]
 pub struct Sequencer<I> {
     /// All root nodes
@@ -78,8 +85,12 @@ impl<I> Sequencer<I> {
 
     /// Inserts items to be executed linearly, one after the other.
     /// The first item is immediately queued for processing.
-    /// Returns the key of the last node in the sequence.
-    pub fn new_seq(&mut self, mut items: Vec<I>) -> SeqKey {
+    /// Returns the key of the last node in the sequence unless the sequence
+    /// is empty in which case returns None.
+    pub fn new_seq(&mut self, mut items: Vec<I>) -> Option<SeqKey> {
+        if items.is_empty() {
+            return None;
+        }
         // Make the root element be last so we can pop it
         // TODO there's probably an O(1) way to do this
         items.rotate_left(1);
@@ -92,12 +103,13 @@ impl<I> Sequencer<I> {
         for item in items {
             prev_key = self.create_node_with_parents(vec![prev_key], item);
         }
-        prev_key
+        Some(prev_key)
     }
 
     /// Inserts a vector of items to be executed linearly, one after the other.
     /// The first item is run once the parent is done.
-    /// Returns the key of the last node in the sequence.
+    /// Returns the key of the last node in the sequence or parent key if
+    /// the sequence is empty.
     pub fn new_child_seq(&mut self, parent: SeqKey, items: Vec<I>) -> SeqKey {
         let mut prev_key = parent;
         for item in items {
@@ -109,7 +121,8 @@ impl<I> Sequencer<I> {
     /// Inserts a vector of items to be executed linearly, one after the other.
     /// The first item is run once the parent is done.
     /// The parents children are transfered to the last node of the new sequence.
-    /// Returns the key of the last node in the sequence.
+    /// Returns the key of the last node in the sequence or parent key if
+    /// the sequence is empty.
     pub fn inject_child_seq(&mut self, parent: SeqKey, items: Vec<I>) -> SeqKey {
         // Detach children from parent
         let mut parent_children = std::mem::take(&mut self.nodes[parent].children);
@@ -233,7 +246,9 @@ mod tests {
     #[test]
     fn test_inject_seq() {
         let mut sequencer = Sequencer::default();
-        let s1 = sequencer.new_seq(vec![SeqItem::Walk, SeqItem::Walk]);
+        let s1 = sequencer
+            .new_seq(vec![SeqItem::Walk, SeqItem::Walk])
+            .unwrap();
         sequencer.new_child_seq(s1, vec![SeqItem::Say, SeqItem::Say]);
         sequencer.inject_child_seq(s1, vec![SeqItem::Wait, SeqItem::Wait]);
         assert_eq!(6, sequencer.nodes.len());
@@ -289,7 +304,9 @@ mod tests {
     fn test_node_finished_seq() {
         // Test case: A seq of nodes exists. Finishing a node queues up the next.
         let mut sequencer = Sequencer::default();
-        let mut key = sequencer.new_seq(vec![SeqItem::Walk, SeqItem::Wait, SeqItem::Say]);
+        let mut key = sequencer
+            .new_seq(vec![SeqItem::Walk, SeqItem::Wait, SeqItem::Say])
+            .unwrap();
 
         sequencer.drain_queue(|drain_key, item| {
             key = drain_key;
