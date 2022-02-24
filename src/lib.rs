@@ -217,9 +217,22 @@ impl<I> Sequencer<I> {
         });
     }
 
-    /// Iterator for all nodes that are currently active.
-    pub fn iter_active(&self) -> impl Iterator<Item = &SeqNode<I>> {
-        self.active_nodes.iter().map(|key| &self.nodes[*key])
+    /// Call an fn for all nodes that are currently active.
+    /// If f returns true, mark the node as completed.
+    pub fn for_each_active<F>(&mut self, mut f: F)
+    where
+        F: FnMut(SeqKey, &mut I) -> bool,
+    {
+        let active_nodes = self.active_nodes.clone();
+        active_nodes.iter().for_each(|key| {
+            let node = &mut self.nodes[*key];
+            let key = node.key;
+            let item = &mut node.item;
+            let completed = f(key, item);
+            if completed {
+                self.node_finished(key);
+            }
+        });
     }
 
     /// Returns true if there are an active or queued node.
@@ -361,17 +374,20 @@ mod tests {
     }
 
     #[test]
-    fn test_iter_active() {
+    fn test_for_each_active() {
         let mut sequencer = Sequencer::default();
         let key = sequencer.new_node(SeqItem::Walk);
         let key2 = sequencer.new_node(SeqItem::Wait);
         sequencer.drain_queue(|_key, _item| {});
         let expected_active: HashSet<SeqKey> = vec![key, key2].into_iter().collect();
-        let actual_active: HashSet<SeqKey> = sequencer.iter_active().map(|node| node.key).collect();
+        let mut actual_active: HashSet<SeqKey> = HashSet::new();
+        sequencer.for_each_active(|key, _item| actual_active.insert(key));
         assert_eq!(expected_active, actual_active);
         sequencer.node_finished(key);
         sequencer.node_finished(key2);
-        assert_eq!(0, sequencer.iter_active().count())
+        let mut actual_active: HashSet<SeqKey> = HashSet::new();
+        sequencer.for_each_active(|key, _item| actual_active.insert(key));
+        assert_eq!(0, actual_active.len())
     }
 
     #[test]
@@ -384,5 +400,4 @@ mod tests {
         sequencer.node_finished(key);
         assert_eq!(false, sequencer.is_active());
     }
-
 }
