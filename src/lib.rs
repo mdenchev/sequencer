@@ -221,6 +221,11 @@ impl<I> Sequencer<I> {
     pub fn iter_active(&self) -> impl Iterator<Item = &SeqNode<I>> {
         self.active_nodes.iter().map(|key| &self.nodes[*key])
     }
+
+    /// Returns true if there are no active or queued nodes.
+    pub fn is_empty(&self) -> bool {
+        self.active_nodes.is_empty() && self.queued_nodes.is_empty()
+    }
 }
 
 #[cfg(test)]
@@ -368,4 +373,16 @@ mod tests {
         sequencer.node_finished(key2);
         assert_eq!(0, sequencer.iter_active().count())
     }
+
+    #[test]
+    fn test_is_empty() {
+        let mut sequencer = Sequencer::default();
+        let key = sequencer.new_node(SeqItem::Walk);
+        assert_eq!(false, sequencer.is_empty());
+        sequencer.drain_queue(|_, _| {});
+        assert_eq!(false, sequencer.is_empty());
+        sequencer.node_finished(key);
+        assert_eq!(true, sequencer.is_empty());
+    }
+
 }
