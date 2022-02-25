@@ -136,11 +136,23 @@ impl<I> Sequencer<I> {
     }
 
     /// Inserts a vector of items to be executed linearly, one after the other.
-    /// The first item is run once the parent is done.
-    /// Returns the key of the last node in the sequence or parent key if
+    /// The first item is run once the parents are marked done.
     /// the sequence is empty.
-    pub fn new_child_seq(&mut self, parent: SeqKey, items: Vec<I>) -> SeqKey {
-        let mut prev_key = parent;
+    /// Panics if the items being inserted is empty or if parents is empty.
+    pub fn new_child_seq(&mut self, parents: Vec<SeqKey>, mut items: Vec<I>) -> SeqKey {
+        if parents.is_empty() {
+            panic!("Parent keys are empty")
+        }
+        if items.is_empty() {
+            panic!("Items are empty")
+        }
+
+        // Create first node as child of parents
+        // TODO there's probably an O(1) way to do this
+        items.rotate_left(1);
+        let mut prev_key = self.create_node_with_parents(parents, items.pop().unwrap());
+
+        // Create rest of nodes
         for item in items {
             prev_key = self.create_node_with_parents(vec![prev_key], item);
         }
@@ -157,7 +169,7 @@ impl<I> Sequencer<I> {
         let mut parent_children = std::mem::take(&mut self.nodes[parent].children);
 
         // Inject the new sequence
-        let last_key = self.new_child_seq(parent, items);
+        let last_key = self.new_child_seq(vec![parent], items);
 
         // Insert the parent's ex-children to the last node in the new seq
         self.nodes[last_key].children.append(&mut parent_children);
@@ -282,12 +294,15 @@ mod tests {
     #[test]
     fn test_new_child_seq() {
         let mut sequencer = Sequencer::default();
-        let parent = sequencer.new_node(SeqItem::Walk);
-        sequencer.new_child_seq(parent, vec![SeqItem::Say, SeqItem::Say]);
-        assert_eq!(3, sequencer.nodes.len());
-        assert_eq!(1, sequencer.queued_nodes.len());
-        let queued_node = &sequencer.nodes[sequencer.queued_nodes[0]];
-        assert_eq!(SeqItem::Walk, queued_node.item);
+        let p1 = sequencer.new_node(SeqItem::Walk);
+        let p2 = sequencer.new_node(SeqItem::Walk);
+        sequencer.new_child_seq(vec![p1, p2], vec![SeqItem::Say, SeqItem::Say]);
+        assert_eq!(4, sequencer.nodes.len());
+        assert_eq!(2, sequencer.queued_nodes.len());
+        for i in 0..2usize {
+            let queued_node = &sequencer.nodes[sequencer.queued_nodes[i]];
+            assert_eq!(SeqItem::Walk, queued_node.item);
+        }
     }
 
     #[test]
@@ -296,7 +311,7 @@ mod tests {
         let s1 = sequencer
             .new_seq(vec![SeqItem::Walk, SeqItem::Walk])
             .unwrap();
-        sequencer.new_child_seq(s1, vec![SeqItem::Say, SeqItem::Say]);
+        sequencer.new_child_seq(vec![s1], vec![SeqItem::Say, SeqItem::Say]);
         sequencer.inject_child_seq(s1, vec![SeqItem::Wait, SeqItem::Wait]);
         assert_eq!(6, sequencer.nodes.len());
         assert_eq!(1, sequencer.queued_nodes.len());
