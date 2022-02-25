@@ -1,6 +1,6 @@
 [package]
 name = "sequencer"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Dependency graph processing libarary"
 license-file = "LICENSE"
