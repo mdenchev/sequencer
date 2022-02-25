@@ -15,7 +15,7 @@
 //!
 //! # Examples
 //!
-//! TBA
+//! Check examples dir.
 //!
 //! # Features to add:
 //! - More ergonomic methods for creating graphs, especially ones with parallel

@@ -24,15 +24,36 @@ impl Actions {
     }
 }
 
+/// In this example we create two nodes that run concurrently counting
+/// up to a number and then once everything is finished we call the
+/// last node, Done.
+/// Output:
+/// Started: Count(1..6)
+/// 1
+/// 2
+/// 3
+/// 4
+/// 5
+/// Finished counting    
+/// Started: Count(6..11)
+/// 6
+/// 7
+/// 8
+/// 9
+/// 10
+/// Finished counting
+/// Started: Done
 fn main() {
     let mut sequencer = Sequencer::default();
-    sequencer.new_seq(vec![Actions::Count(1..6), Actions::Count(6..11), Actions::Done]);
+    sequencer.new_seq(vec![
+        Actions::Count(1..6),
+        Actions::Count(6..11),
+        Actions::Done,
+    ]);
     while sequencer.is_active() {
-        sequencer.drain_queue(|key, action| {
+        sequencer.drain_queue(|_key, action| {
             println!("Started: {action:?}");
         });
-        sequencer.for_each_active(|key, item| {
-            item.tick()
-        });
+        sequencer.for_each_active(|_key, item| item.tick());
     }
 }
