@@ -36,7 +36,7 @@ new_key_type! {
 
 /// The status of a node.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NodeStatus {
+enum NodeStatus {
     Active,
     Inactive,
     Completed,
