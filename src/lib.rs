@@ -9,9 +9,9 @@
 //!
 //! # Intended uses
 //!
-//! This crate was made for sequencing/scripting events and actions for a game
-//! though it could potentially be used for any other case that can be
-//! represented as a dependency graph.
+//! This crate was made for sequencing/scripting events for a game
+//! though it could potentially be used for anything that can be modeled as
+//! a dependency graph.
 //!
 //! # Examples
 //!
