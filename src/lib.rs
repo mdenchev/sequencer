@@ -12,26 +12,26 @@
 //! This crate was made for sequencing/scripting events for a game
 //! though it could be used for anything that can be modeled as
 //! a dependency graph.
-//! 
+//!
 //! # Cargo
-//! 
+//!
 //! Add the following to Cargo.toml:
-//! 
+//!
 //! ```toml
 //! sequencer = "0.1"
 //! ```
 //!
 //! # Examples
-//! 
+//!
 //! A simple linear sequence such as wait for 5 ticks and then print
 //! something can be expressed as:
-//! 
+//!
 //! ```
 //! enum Actions {
 //!     Wait(usize)
 //!     Print(String)
 //! }
-//! 
+//!
 //! impl Actions {
 //!     fn tick(&mut self) -> bool {
 //!         match self {
@@ -39,7 +39,7 @@
 //!         }
 //!     }
 //! }
-//! 
+//!
 //! fn main() {
 //!     let mut sequencer = Sequencer::default();
 //!     sequencer.new_seq(vec![Wait(5usize), Print("Done waiting".to_string())]);
@@ -105,6 +105,8 @@ pub struct Sequencer<I> {
     queued_nodes: Vec<SeqKey>,
     /// List of all nodes that are currently running
     active_nodes: HashSet<SeqKey>,
+    /// Whether queued nodes should transition automatically to active
+    auto_drain: bool,
 }
 
 impl<T> Default for Sequencer<T> {
@@ -115,11 +117,19 @@ impl<T> Default for Sequencer<T> {
             nodes,
             queued_nodes: vec![],
             active_nodes: HashSet::new(),
+            auto_drain: true
         }
     }
 }
 
 impl<I> Sequencer<I> {
+    pub fn new(auto_drain: bool) -> Self {
+        Self {
+            auto_drain,
+            ..Default::default()
+        }
+    }
+
     fn create_node(&mut self, item: I) -> SeqKey {
         self.nodes.insert_with_key(|key| SeqNode {
             key,

@@ -2,7 +2,7 @@
 name = "sequencer"
 version = "0.1.1"
 edition = "2021"
-description = "Dependency graph processing libarary"
+description = "Dependency graph processing library"
 license-file = "LICENSE"
 repository = "https://github.com/mdenchev/sequencer/"
 keywords = ["gamedev", "graph", "sequencing" ]
@@ -10,3 +10,7 @@ keywords = ["gamedev", "graph", "sequencing" ]
 [dependencies]
 log = "0.4"
 slotmap = { version = "1.0" }
+
+[dev-dependencies]
+bevy = "0.6"
+bevy_spicy_aseprite = {git = "https://github.com/mdenchev/bevy_spicy_aseprite"}
