@@ -68,6 +68,8 @@ pub struct Sequencer<I> {
     queued_nodes: Vec<SeqKey>,
     /// List of all nodes that are currently running
     active_nodes: HashSet<SeqKey>,
+    /// Whether to automatically transition to active nodes
+    auto_activate: bool,
 }
 
 impl<T> Default for Sequencer<T> {
@@ -78,11 +80,17 @@ impl<T> Default for Sequencer<T> {
             nodes,
             queued_nodes: vec![],
             active_nodes: HashSet::new(),
+            auto_activate: false,
         }
     }
 }
 
 impl<I> Sequencer<I> {
+    pub fn auto_activate(mut self, val: bool) -> Self {
+        self.auto_activate = val;
+        self
+    }
+
     fn create_node(&mut self, item: I) -> SeqKey {
         self.nodes.insert_with_key(|key| SeqNode {
             key,
